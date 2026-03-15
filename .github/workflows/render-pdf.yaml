@@ -33,12 +33,13 @@ jobs:
         uses: docker://pandoc/latex:3.8
         with:
           args: -f markdown+rebase_relative_paths --output=output/proposal.pdf ${{ steps.changed-markdown-files.outputs.all_changed_files }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         id: artifact
         with:
           name: proposal
           path: output/proposal.pdf
           if-no-files-found: error 
+          archive: false
       - name: Comment PR
         uses: thollander/actions-comment-pull-request@v3
         id: message-pdf
