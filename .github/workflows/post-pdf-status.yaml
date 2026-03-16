@@ -1,0 +1,70 @@
+name: PDF Link
+
+on: status
+
+permissions: {}
+
+jobs:
+  post_link_to_artifact:
+    runs-on: ubuntu-latest
+    if: "${{ github.event.context == 'Generate PDF / convert_with_pandoc' }}"
+    permissions:
+      actions: read
+      statuses: write
+      checks: read
+    steps:
+      - name: Get the commit SHA from the status event
+        id: commit_sha
+        run: echo "sha=${{ github.event.commit.sha }}" >> $GITHUB_OUTPUT
+
+      - name: List workflow runs for the commit
+        id: list_runs
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data: runs } = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              head_sha: '${{ steps.commit_sha.outputs.sha }}',
+              status: 'success',
+            });
+
+            // Filter runs for the target workflow (e.g., "Generate PDF")
+            const targetWorkflow = 'Generate PDF'; // Replace with your workflow name
+            const targetRuns = runs.workflow_runs.filter(run => run.name === targetWorkflow);
+
+            if (targetRuns.length === 0) {
+              console.log('No successful runs for the target workflow found.');
+              return;
+            }
+
+            // Get the most recent run
+            const latestRun = targetRuns[0];
+            core.setOutput('run_id', latestRun.id);
+
+      - name: List artifacts and post statuses
+        if: steps.list_runs.outputs.run_id
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const runId = ${{ steps.list_runs.outputs.run_id }};
+            const { data: artifacts } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: runId,
+            });
+
+            const targetFilename = 'proposal.pdf'; // Replace with your target filename
+            for (const artifact of artifacts.artifacts) {
+              if (artifact.name.includes(targetFilename)) {
+                await github.rest.repos.createCommitStatus({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  sha: '${{ steps.commit_sha.outputs.sha }}',
+                  state: 'success',
+                  target_url: artifact.archive_download_url,
+                  description: `Artifact: ${artifact.name}`,
+                  context: `PDF Artifact (${artifact.name})`,
+                });
+              }
+            }
